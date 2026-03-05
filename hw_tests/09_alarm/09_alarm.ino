@@ -2,7 +2,8 @@
  * @file 09_alarm.ino
  * @brief Hardware test 09: Alarm
  *
- * Tests alarm functionality with every-minute mode.
+ * Tests alarm functionality including flag operations and
+ * specific time matching with HourMin mode.
  */
 
 #include <Adafruit_RV8803.h>
@@ -35,45 +36,8 @@ void setup() {
     Serial.println(F("  FAIL - alarm flag still set"));
   }
 
-  // Test 2: Set every-minute alarm and wait for it
-  Serial.println(F("Test 2: Every-minute alarm (wait up to 65s) ..."));
-  DateTime now = rtc.now();
-  rtc.setAlarm(now, RV8803_A_EveryMinute);
-  rtc.enableInterrupt(RV8803_InterruptAlarm);
-
-  unsigned long start = millis();
-  bool fired = false;
-
-  while (millis() - start < 65000) {
-    if (rtc.alarmFired()) {
-      fired = true;
-      Serial.print(F("  Alarm fired after "));
-      Serial.print((millis() - start) / 1000);
-      Serial.println(F(" seconds"));
-      break;
-    }
-    delay(500);
-  }
-
-  if (fired) {
-    Serial.println(F("  PASS - alarm fired"));
-    passed++;
-  } else {
-    Serial.println(F("  FAIL - alarm did not fire within 65s"));
-  }
-
-  // Test 3: Clear alarm and verify
-  Serial.println(F("Test 3: Clear alarm flag after firing ..."));
-  rtc.clearAlarm();
-  if (!rtc.alarmFired()) {
-    Serial.println(F("  PASS - alarm flag cleared"));
-    passed++;
-  } else {
-    Serial.println(F("  FAIL - alarm flag still set"));
-  }
-
-  // Test 4: setAlarmDate and setAlarmWeekday round-trip
-  Serial.println(F("Test 4: setAlarmDate/setAlarmWeekday round-trip ..."));
+  // Test 2: Alarm mode and register round-trip
+  Serial.println(F("Test 2: Alarm register round-trip ..."));
 
   // Test date mode
   rtc.setAlarmDate(15);
@@ -81,24 +45,96 @@ void setup() {
   bool datePass = (alarmDt.day() == 15);
   Serial.print(F("  setAlarmDate(15) -> getAlarm().day() = "));
   Serial.print(alarmDt.day());
-  Serial.println(datePass ? F(" PASS") : F(" FAIL"));
+  Serial.println(datePass ? F(" OK") : F(" FAIL"));
 
   // Test weekday mode (weekday mask 0x08 = bit 3 = Wednesday)
   rtc.setAlarmWeekday(0x08);
   alarmDt = rtc.getAlarm();
-  // After setAlarmWeekday, WADA=0, so getAlarm returns weekday
-  // Weekday mask 0x08 -> one-hot day 3 (Wednesday)
   bool wdPass = (alarmDt.day() == 3);
   Serial.print(F("  setAlarmWeekday(0x08) -> getAlarm().day() = "));
   Serial.print(alarmDt.day());
-  Serial.println(wdPass ? F(" PASS") : F(" FAIL"));
+  Serial.println(wdPass ? F(" OK") : F(" FAIL"));
 
   if (datePass && wdPass) {
+    Serial.println(F("  PASS"));
     passed++;
+  } else {
+    Serial.println(F("  FAIL"));
   }
 
-  // Disable alarm interrupt
+  // Test 3: Specific time alarm (HourMin mode) - quick version
+  Serial.println(F("Test 3: Specific time alarm (HourMin daily mode) ..."));
+  Serial.println(F("  Setting time to 22:30:55, alarm for 22:31"));
+
+  // Set current time to 22:30:55 (5 seconds before alarm)
+  rtc.adjust(DateTime(2026, 3, 4, 22, 30, 55));
+  delay(100);
+
+  // Clear any existing alarm
+  rtc.clearAlarm();
+
+  // Set alarm for 22:31 in HourMin mode
+  DateTime alarmTime(2026, 3, 4, 22, 31, 0);
+  rtc.setAlarm(alarmTime, RV8803_A_HourMin);
+  rtc.enableInterrupt(RV8803_InterruptAlarm);
+
+  // Verify alarm is set correctly
+  DateTime alarmCheck = rtc.getAlarm();
+  Serial.print(F("  Alarm set for: "));
+  Serial.print(alarmCheck.hour());
+  Serial.print(F(":"));
+  Serial.println(alarmCheck.minute());
+
+  // Wait up to 10 seconds for alarm (should fire in ~5s)
+  unsigned long start = millis();
+  bool fired = false;
+  unsigned long fireTime = 0;
+
+  Serial.println(F("  Waiting for alarm (up to 10s)..."));
+
+  while (millis() - start < 10000) {
+    if (rtc.alarmFired()) {
+      fired = true;
+      fireTime = millis() - start;
+      DateTime nowTime = rtc.now();
+      Serial.print(F("  Alarm fired at "));
+      Serial.print(nowTime.hour());
+      Serial.print(F(":"));
+      Serial.print(nowTime.minute());
+      Serial.print(F(":"));
+      Serial.print(nowTime.second());
+      Serial.print(F(" (after "));
+      Serial.print(fireTime / 1000);
+      Serial.println(F("s)"));
+      break;
+    }
+    delay(100);
+  }
+
+  if (fired) {
+    // Verify it fired around 5 seconds (allow 3-8s window)
+    if (fireTime >= 3000 && fireTime <= 8000) {
+      Serial.println(F("  PASS - alarm fired at expected time"));
+      passed++;
+    } else {
+      Serial.print(F("  FAIL - fired at wrong time (expected ~5s, got "));
+      Serial.print(fireTime / 1000);
+      Serial.println(F("s)"));
+    }
+  } else {
+    Serial.println(F("  FAIL - alarm did not fire within 10s"));
+  }
+
+  // Test 4: Clear alarm and verify after firing
+  Serial.println(F("Test 4: Clear alarm flag after firing ..."));
+  rtc.clearAlarm();
   rtc.disableInterrupt(RV8803_InterruptAlarm);
+  if (!rtc.alarmFired()) {
+    Serial.println(F("  PASS - alarm flag cleared"));
+    passed++;
+  } else {
+    Serial.println(F("  FAIL - alarm flag still set"));
+  }
 
   Serial.println();
   Serial.print(passed);

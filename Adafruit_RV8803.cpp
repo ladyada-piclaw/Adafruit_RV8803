@@ -25,13 +25,14 @@
  */
 
 #include "Adafruit_RV8803.h"
+#include <Adafruit_BusIO_Register.h>
 
 /**
  * @brief Initialize the RV8803 RTC
  * @param wire Pointer to TwoWire instance (default &Wire)
  * @return true if device found, false on NACK
  */
-bool Adafruit_RV8803::begin(TwoWire* wire) {
+bool Adafruit_RV8803::begin(TwoWire *wire) {
   if (!i2c_dev) {
     i2c_dev = new Adafruit_I2CDevice(RV8803_I2C_ADDRESS, wire);
   }
@@ -48,11 +49,10 @@ bool Adafruit_RV8803::begin(TwoWire* wire) {
  * @note Burst-reads registers 0x00-0x06 for consistency
  */
 DateTime Adafruit_RV8803::now() {
+  uint8_t reg = RV8803_REG_SECONDS;
   uint8_t buffer[7];
   // Burst read seconds through year
-  buffer[0] = RV8803_REG_SECONDS;
-  i2c_dev->write(buffer, 1);
-  i2c_dev->read(buffer, 7);
+  i2c_dev->write_then_read(&reg, 1, buffer, 7);
 
   uint8_t ss = bcd2bin(buffer[0] & 0x7F);
   uint8_t mm = bcd2bin(buffer[1] & 0x7F);
@@ -70,7 +70,7 @@ DateTime Adafruit_RV8803::now() {
  * @param dt DateTime object with desired time
  * @note Burst-writes registers 0x00-0x06. Clears V1F and V2F flags.
  */
-void Adafruit_RV8803::adjust(const DateTime& dt) {
+void Adafruit_RV8803::adjust(const DateTime &dt) {
   uint8_t buffer[8];
   buffer[0] = RV8803_REG_SECONDS;
   buffer[1] = bin2bcd(dt.second());
@@ -91,16 +91,16 @@ void Adafruit_RV8803::adjust(const DateTime& dt) {
  * @return true if V2F flag is set (time data invalid, must call adjust())
  */
 bool Adafruit_RV8803::lostPower() {
-  return (readFlagRegister() & RV8803_FLAG_V2F) != 0;
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  Adafruit_BusIO_RegisterBits v2f(&flag_reg, 1, 1); // V2F is bit 1
+  return v2f.read();
 }
 
 /**
  * @brief Check if RTC oscillator is running (has not lost power)
  * @return true if V2F is NOT set (oscillator OK)
  */
-bool Adafruit_RV8803::isrunning() {
-  return !lostPower();
-}
+bool Adafruit_RV8803::isrunning() { return !lostPower(); }
 
 /**
  * @brief Read hundredths of a second (0-99)
@@ -108,7 +108,8 @@ bool Adafruit_RV8803::isrunning() {
  * @note This register is read-only and cleared when writing seconds
  */
 uint8_t Adafruit_RV8803::getHundredths() {
-  return bcd2bin(read_register(RV8803_REG_HUNDREDTHS));
+  Adafruit_BusIO_Register hundredths_reg(i2c_dev, RV8803_REG_HUNDREDTHS, 1);
+  return bcd2bin(hundredths_reg.read());
 }
 
 /**
@@ -116,7 +117,8 @@ uint8_t Adafruit_RV8803::getHundredths() {
  * @return Seconds value
  */
 uint8_t Adafruit_RV8803::getSeconds() {
-  return bcd2bin(read_register(RV8803_REG_SECONDS) & 0x7F);
+  Adafruit_BusIO_Register seconds_reg(i2c_dev, RV8803_REG_SECONDS, 1);
+  return bcd2bin(seconds_reg.read() & 0x7F);
 }
 
 /**
@@ -124,7 +126,8 @@ uint8_t Adafruit_RV8803::getSeconds() {
  * @return Minutes value
  */
 uint8_t Adafruit_RV8803::getMinutes() {
-  return bcd2bin(read_register(RV8803_REG_MINUTES) & 0x7F);
+  Adafruit_BusIO_Register minutes_reg(i2c_dev, RV8803_REG_MINUTES, 1);
+  return bcd2bin(minutes_reg.read() & 0x7F);
 }
 
 /**
@@ -132,7 +135,8 @@ uint8_t Adafruit_RV8803::getMinutes() {
  * @return Hours value (24-hour format)
  */
 uint8_t Adafruit_RV8803::getHours() {
-  return bcd2bin(read_register(RV8803_REG_HOURS) & 0x3F);
+  Adafruit_BusIO_Register hours_reg(i2c_dev, RV8803_REG_HOURS, 1);
+  return bcd2bin(hours_reg.read() & 0x3F);
 }
 
 /**
@@ -140,7 +144,8 @@ uint8_t Adafruit_RV8803::getHours() {
  * @return Weekday value converted from one-hot encoding
  */
 uint8_t Adafruit_RV8803::getWeekday() {
-  return onehot2weekday(read_register(RV8803_REG_WEEKDAY) & 0x7F);
+  Adafruit_BusIO_Register weekday_reg(i2c_dev, RV8803_REG_WEEKDAY, 1);
+  return onehot2weekday(weekday_reg.read() & 0x7F);
 }
 
 /**
@@ -148,7 +153,8 @@ uint8_t Adafruit_RV8803::getWeekday() {
  * @return Day value
  */
 uint8_t Adafruit_RV8803::getDate() {
-  return bcd2bin(read_register(RV8803_REG_DATE) & 0x3F);
+  Adafruit_BusIO_Register date_reg(i2c_dev, RV8803_REG_DATE, 1);
+  return bcd2bin(date_reg.read() & 0x3F);
 }
 
 /**
@@ -156,7 +162,8 @@ uint8_t Adafruit_RV8803::getDate() {
  * @return Month value
  */
 uint8_t Adafruit_RV8803::getMonth() {
-  return bcd2bin(read_register(RV8803_REG_MONTH) & 0x1F);
+  Adafruit_BusIO_Register month_reg(i2c_dev, RV8803_REG_MONTH, 1);
+  return bcd2bin(month_reg.read() & 0x1F);
 }
 
 /**
@@ -164,7 +171,8 @@ uint8_t Adafruit_RV8803::getMonth() {
  * @return Full year value
  */
 uint16_t Adafruit_RV8803::getYear() {
-  return bcd2bin(read_register(RV8803_REG_YEAR)) + 2000;
+  Adafruit_BusIO_Register year_reg(i2c_dev, RV8803_REG_YEAR, 1);
+  return bcd2bin(year_reg.read()) + 2000;
 }
 
 /**
@@ -174,38 +182,48 @@ uint16_t Adafruit_RV8803::getYear() {
  * @return true on success, false on I2C error
  * @note AE bits are inverted: 0=enabled, 1=disabled
  */
-bool Adafruit_RV8803::setAlarm(const DateTime& dt, rv8803_alarm_mode_t mode) {
+bool Adafruit_RV8803::setAlarm(const DateTime &dt, rv8803_alarm_mode_t mode) {
   _alarmMode = mode;
 
   // Determine AE bit values based on mode
   // Mode bits: [AE_WD][AE_H][AE_M] where 0=enabled, 1=disabled
-  uint8_t ae_m = (mode & 0x01) ? RV8803_ALARM_AE_M : 0;
-  uint8_t ae_h = (mode & 0x02) ? RV8803_ALARM_AE_H : 0;
-  uint8_t ae_wd = (mode & 0x04) ? RV8803_ALARM_AE_WD : 0;
+  uint8_t ae_m = (mode & 0x01) ? 1 : 0;
+  uint8_t ae_h = (mode & 0x02) ? 1 : 0;
+  uint8_t ae_wd = (mode & 0x04) ? 1 : 0;
 
-  // Read current values to preserve GP0 and GP1 bits
-  uint8_t hours_reg = read_register(RV8803_REG_HOURS_ALARM);
-  uint8_t wd_reg = read_register(RV8803_REG_WEEKDAY_DATE_ALARM);
-  uint8_t ext_reg = readExtensionRegister();
+  // Minutes alarm register
+  Adafruit_BusIO_Register min_alarm_reg(i2c_dev, RV8803_REG_MINUTES_ALARM, 1);
+  Adafruit_BusIO_RegisterBits ae_m_bit(&min_alarm_reg, 1, 7);
+  uint8_t minutes_alarm = bin2bcd(dt.minute());
+  min_alarm_reg.write(minutes_alarm);
+  ae_m_bit.write(ae_m);
 
-  // Minutes alarm
-  uint8_t minutes_alarm = bin2bcd(dt.minute()) | ae_m;
-  write_register(RV8803_REG_MINUTES_ALARM, minutes_alarm);
+  // Hours alarm register (preserve GP0 bit)
+  Adafruit_BusIO_Register hours_alarm_reg(i2c_dev, RV8803_REG_HOURS_ALARM, 1);
+  Adafruit_BusIO_RegisterBits ae_h_bit(&hours_alarm_reg, 1, 7);
+  Adafruit_BusIO_RegisterBits gp0_bit(&hours_alarm_reg, 1, 6);
+  uint8_t gp0_val = gp0_bit.read();
+  hours_alarm_reg.write(bin2bcd(dt.hour()) | (gp0_val << 6));
+  ae_h_bit.write(ae_h);
 
-  // Hours alarm (preserve GP0 bit)
-  uint8_t hours_alarm = (hours_reg & 0x40) | bin2bcd(dt.hour()) | ae_h;
-  write_register(RV8803_REG_HOURS_ALARM, hours_alarm);
+  // Weekday/Date alarm register
+  Adafruit_BusIO_Register ext_reg(i2c_dev, RV8803_REG_EXTENSION, 1);
+  Adafruit_BusIO_RegisterBits wada(&ext_reg, 1, 6);
 
-  // Weekday/Date alarm depends on WADA bit
-  if (ext_reg & RV8803_EXT_WADA) {
+  Adafruit_BusIO_Register wd_alarm_reg(i2c_dev, RV8803_REG_WEEKDAY_DATE_ALARM,
+                                       1);
+  Adafruit_BusIO_RegisterBits ae_wd_bit(&wd_alarm_reg, 1, 7);
+  Adafruit_BusIO_RegisterBits gp1_bit(&wd_alarm_reg, 1, 6);
+
+  if (wada.read()) {
     // Date mode (preserve GP1 bit)
-    uint8_t date_alarm = (wd_reg & 0x40) | bin2bcd(dt.day()) | ae_wd;
-    write_register(RV8803_REG_WEEKDAY_DATE_ALARM, date_alarm);
+    uint8_t gp1_val = gp1_bit.read();
+    wd_alarm_reg.write(bin2bcd(dt.day()) | (gp1_val << 6));
   } else {
     // Weekday mode (one-hot)
-    uint8_t weekday_alarm = weekday2onehot(dt.dayOfTheWeek()) | ae_wd;
-    write_register(RV8803_REG_WEEKDAY_DATE_ALARM, weekday_alarm);
+    wd_alarm_reg.write(weekday2onehot(dt.dayOfTheWeek()));
   }
+  ae_wd_bit.write(ae_wd);
 
   return true;
 }
@@ -215,19 +233,25 @@ bool Adafruit_RV8803::setAlarm(const DateTime& dt, rv8803_alarm_mode_t mode) {
  * @return DateTime with alarm minute, hour, and day fields
  */
 DateTime Adafruit_RV8803::getAlarm() {
-  uint8_t minutes = bcd2bin(read_register(RV8803_REG_MINUTES_ALARM) & 0x7F);
-  uint8_t hours = bcd2bin(read_register(RV8803_REG_HOURS_ALARM) & 0x3F);
+  Adafruit_BusIO_Register min_alarm_reg(i2c_dev, RV8803_REG_MINUTES_ALARM, 1);
+  Adafruit_BusIO_Register hours_alarm_reg(i2c_dev, RV8803_REG_HOURS_ALARM, 1);
+  Adafruit_BusIO_Register wd_alarm_reg(i2c_dev, RV8803_REG_WEEKDAY_DATE_ALARM,
+                                       1);
+  Adafruit_BusIO_Register ext_reg(i2c_dev, RV8803_REG_EXTENSION, 1);
+  Adafruit_BusIO_RegisterBits wada(&ext_reg, 1, 6);
 
-  uint8_t ext_reg = readExtensionRegister();
-  uint8_t wd_reg = read_register(RV8803_REG_WEEKDAY_DATE_ALARM);
+  uint8_t minutes = bcd2bin(min_alarm_reg.read() & 0x7F);
+  uint8_t hours = bcd2bin(hours_alarm_reg.read() & 0x3F);
+
+  uint8_t wd_val = wd_alarm_reg.read();
   uint8_t day;
 
-  if (ext_reg & RV8803_EXT_WADA) {
+  if (wada.read()) {
     // Date mode
-    day = bcd2bin(wd_reg & 0x3F);
+    day = bcd2bin(wd_val & 0x3F);
   } else {
     // Weekday mode - convert one-hot to day number
-    day = onehot2weekday(wd_reg & 0x7F);
+    day = onehot2weekday(wd_val & 0x7F);
   }
 
   // Return DateTime with alarm fields (year/month set to minimum)
@@ -242,13 +266,16 @@ DateTime Adafruit_RV8803::getAlarm() {
  */
 bool Adafruit_RV8803::setAlarmWeekday(uint8_t weekday_mask) {
   // Set WADA=0 for weekday mode
-  uint8_t ext_reg = readExtensionRegister();
-  ext_reg &= ~RV8803_EXT_WADA;
-  writeExtensionRegister(ext_reg);
+  Adafruit_BusIO_Register ext_reg(i2c_dev, RV8803_REG_EXTENSION, 1);
+  Adafruit_BusIO_RegisterBits wada(&ext_reg, 1, 6);
+  wada.write(0);
 
   // Read current AE bit and write weekday mask
-  uint8_t ae_bit = read_register(RV8803_REG_WEEKDAY_DATE_ALARM) & 0x80;
-  write_register(RV8803_REG_WEEKDAY_DATE_ALARM, ae_bit | (weekday_mask & 0x7F));
+  Adafruit_BusIO_Register wd_alarm_reg(i2c_dev, RV8803_REG_WEEKDAY_DATE_ALARM,
+                                       1);
+  Adafruit_BusIO_RegisterBits ae_wd_bit(&wd_alarm_reg, 1, 7);
+  uint8_t ae_val = ae_wd_bit.read();
+  wd_alarm_reg.write((ae_val << 7) | (weekday_mask & 0x7F));
   return true;
 }
 
@@ -260,14 +287,18 @@ bool Adafruit_RV8803::setAlarmWeekday(uint8_t weekday_mask) {
  */
 bool Adafruit_RV8803::setAlarmDate(uint8_t date) {
   // Set WADA=1 for date mode
-  uint8_t ext_reg = readExtensionRegister();
-  ext_reg |= RV8803_EXT_WADA;
-  writeExtensionRegister(ext_reg);
+  Adafruit_BusIO_Register ext_reg(i2c_dev, RV8803_REG_EXTENSION, 1);
+  Adafruit_BusIO_RegisterBits wada(&ext_reg, 1, 6);
+  wada.write(1);
 
   // Read current AE bit and GP1 bit, write date
-  uint8_t wd_reg = read_register(RV8803_REG_WEEKDAY_DATE_ALARM);
-  uint8_t preserved = wd_reg & 0xC0; // AE_WD and GP1
-  write_register(RV8803_REG_WEEKDAY_DATE_ALARM, preserved | bin2bcd(date));
+  Adafruit_BusIO_Register wd_alarm_reg(i2c_dev, RV8803_REG_WEEKDAY_DATE_ALARM,
+                                       1);
+  Adafruit_BusIO_RegisterBits ae_wd_bit(&wd_alarm_reg, 1, 7);
+  Adafruit_BusIO_RegisterBits gp1_bit(&wd_alarm_reg, 1, 6);
+  uint8_t ae_val = ae_wd_bit.read();
+  uint8_t gp1_val = gp1_bit.read();
+  wd_alarm_reg.write((ae_val << 7) | (gp1_val << 6) | bin2bcd(date));
   return true;
 }
 
@@ -275,16 +306,16 @@ bool Adafruit_RV8803::setAlarmDate(uint8_t date) {
  * @brief Get the current alarm mode
  * @return rv8803_alarm_mode_t enum value
  */
-rv8803_alarm_mode_t Adafruit_RV8803::getAlarmMode() {
-  return _alarmMode;
-}
+rv8803_alarm_mode_t Adafruit_RV8803::getAlarmMode() { return _alarmMode; }
 
 /**
  * @brief Check if alarm has fired
  * @return true if AF flag is set
  */
 bool Adafruit_RV8803::alarmFired() {
-  return (readFlagRegister() & RV8803_FLAG_AF) != 0;
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  Adafruit_BusIO_RegisterBits af(&flag_reg, 1, 3); // AF is bit 3
+  return af.read();
 }
 
 /**
@@ -292,9 +323,9 @@ bool Adafruit_RV8803::alarmFired() {
  * @return true on success
  */
 bool Adafruit_RV8803::clearAlarm() {
-  uint8_t flags = readFlagRegister();
-  flags &= ~RV8803_FLAG_AF; // Clear AF by writing 0
-  return writeFlagRegister(flags);
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  Adafruit_BusIO_RegisterBits af(&flag_reg, 1, 3); // AF is bit 3
+  return af.write(0);
 }
 
 /**
@@ -312,18 +343,20 @@ bool Adafruit_RV8803::enableCountdownTimer(rv8803_timer_clock_t clock,
   }
 
   // Write lower 8 bits
-  write_register(RV8803_REG_TIMER_COUNTER0, value & 0xFF);
+  Adafruit_BusIO_Register tc0_reg(i2c_dev, RV8803_REG_TIMER_COUNTER0, 1);
+  tc0_reg.write(value & 0xFF);
 
-  // Read Timer Counter 1 to preserve GP2-GP5 bits
-  uint8_t tc1 = read_register(RV8803_REG_TIMER_COUNTER1);
-  tc1 = (tc1 & 0xF0) | ((value >> 8) & 0x0F);
-  write_register(RV8803_REG_TIMER_COUNTER1, tc1);
+  // Write upper 4 bits, preserving GP2-GP5
+  Adafruit_BusIO_Register tc1_reg(i2c_dev, RV8803_REG_TIMER_COUNTER1, 1);
+  Adafruit_BusIO_RegisterBits timer_upper(&tc1_reg, 4, 0);
+  timer_upper.write((value >> 8) & 0x0F);
 
   // Set TD bits and enable timer (TE=1)
-  uint8_t ext_reg = readExtensionRegister();
-  ext_reg &= ~(RV8803_EXT_TD_MASK | RV8803_EXT_TE);
-  ext_reg |= (clock & RV8803_EXT_TD_MASK) | RV8803_EXT_TE;
-  return writeExtensionRegister(ext_reg);
+  Adafruit_BusIO_Register ext_reg(i2c_dev, RV8803_REG_EXTENSION, 1);
+  Adafruit_BusIO_RegisterBits td(&ext_reg, 2, 0); // TD is bits 0-1
+  Adafruit_BusIO_RegisterBits te(&ext_reg, 1, 4); // TE is bit 4
+  td.write(clock & 0x03);
+  return te.write(1);
 }
 
 /**
@@ -331,9 +364,9 @@ bool Adafruit_RV8803::enableCountdownTimer(rv8803_timer_clock_t clock,
  * @return true on success
  */
 bool Adafruit_RV8803::disableCountdownTimer() {
-  uint8_t ext_reg = readExtensionRegister();
-  ext_reg &= ~RV8803_EXT_TE;
-  return writeExtensionRegister(ext_reg);
+  Adafruit_BusIO_Register ext_reg(i2c_dev, RV8803_REG_EXTENSION, 1);
+  Adafruit_BusIO_RegisterBits te(&ext_reg, 1, 4); // TE is bit 4
+  return te.write(0);
 }
 
 /**
@@ -341,9 +374,10 @@ bool Adafruit_RV8803::disableCountdownTimer() {
  * @return 12-bit timer value (not live countdown)
  */
 uint16_t Adafruit_RV8803::getCountdownTimer() {
-  uint8_t tc0 = read_register(RV8803_REG_TIMER_COUNTER0);
-  uint8_t tc1 = read_register(RV8803_REG_TIMER_COUNTER1);
-  return tc0 | ((uint16_t)(tc1 & 0x0F) << 8);
+  Adafruit_BusIO_Register tc0_reg(i2c_dev, RV8803_REG_TIMER_COUNTER0, 1);
+  Adafruit_BusIO_Register tc1_reg(i2c_dev, RV8803_REG_TIMER_COUNTER1, 1);
+  Adafruit_BusIO_RegisterBits timer_upper(&tc1_reg, 4, 0);
+  return tc0_reg.read() | ((uint16_t)timer_upper.read() << 8);
 }
 
 /**
@@ -351,7 +385,9 @@ uint16_t Adafruit_RV8803::getCountdownTimer() {
  * @return true if TF flag is set
  */
 bool Adafruit_RV8803::timerFired() {
-  return (readFlagRegister() & RV8803_FLAG_TF) != 0;
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  Adafruit_BusIO_RegisterBits tf(&flag_reg, 1, 4); // TF is bit 4
+  return tf.read();
 }
 
 /**
@@ -359,9 +395,9 @@ bool Adafruit_RV8803::timerFired() {
  * @return true on success
  */
 bool Adafruit_RV8803::clearTimer() {
-  uint8_t flags = readFlagRegister();
-  flags &= ~RV8803_FLAG_TF;
-  return writeFlagRegister(flags);
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  Adafruit_BusIO_RegisterBits tf(&flag_reg, 1, 4); // TF is bit 4
+  return tf.write(0);
 }
 
 /**
@@ -370,13 +406,9 @@ bool Adafruit_RV8803::clearTimer() {
  * @return true on success
  */
 bool Adafruit_RV8803::setUpdateMode(rv8803_update_mode_t mode) {
-  uint8_t ext_reg = readExtensionRegister();
-  if (mode == RV8803_UpdateMinute) {
-    ext_reg |= RV8803_EXT_USEL;
-  } else {
-    ext_reg &= ~RV8803_EXT_USEL;
-  }
-  return writeExtensionRegister(ext_reg);
+  Adafruit_BusIO_Register ext_reg(i2c_dev, RV8803_REG_EXTENSION, 1);
+  Adafruit_BusIO_RegisterBits usel(&ext_reg, 1, 5); // USEL is bit 5
+  return usel.write(mode == RV8803_UpdateMinute ? 1 : 0);
 }
 
 /**
@@ -384,7 +416,9 @@ bool Adafruit_RV8803::setUpdateMode(rv8803_update_mode_t mode) {
  * @return true if UF flag is set
  */
 bool Adafruit_RV8803::updateFired() {
-  return (readFlagRegister() & RV8803_FLAG_UF) != 0;
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  Adafruit_BusIO_RegisterBits uf(&flag_reg, 1, 5); // UF is bit 5
+  return uf.read();
 }
 
 /**
@@ -392,9 +426,9 @@ bool Adafruit_RV8803::updateFired() {
  * @return true on success
  */
 bool Adafruit_RV8803::clearUpdate() {
-  uint8_t flags = readFlagRegister();
-  flags &= ~RV8803_FLAG_UF;
-  return writeFlagRegister(flags);
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  Adafruit_BusIO_RegisterBits uf(&flag_reg, 1, 5); // UF is bit 5
+  return uf.write(0);
 }
 
 /**
@@ -405,13 +439,11 @@ bool Adafruit_RV8803::clearUpdate() {
  */
 bool Adafruit_RV8803::configureEvent(bool rising_edge,
                                      rv8803_event_filter_t filter) {
-  uint8_t evctrl = readEventControl();
-  evctrl &= ~(RV8803_EVCTRL_EHL | RV8803_EVCTRL_ET_MASK);
-  if (rising_edge) {
-    evctrl |= RV8803_EVCTRL_EHL;
-  }
-  evctrl |= ((filter << RV8803_EVCTRL_ET_SHIFT) & RV8803_EVCTRL_ET_MASK);
-  return writeEventControl(evctrl);
+  Adafruit_BusIO_Register evctrl_reg(i2c_dev, RV8803_REG_EVENT_CONTROL, 1);
+  Adafruit_BusIO_RegisterBits ehl(&evctrl_reg, 1, 6); // EHL is bit 6
+  Adafruit_BusIO_RegisterBits et(&evctrl_reg, 2, 4);  // ET is bits 4-5
+  ehl.write(rising_edge ? 1 : 0);
+  return et.write(filter & 0x03);
 }
 
 /**
@@ -420,13 +452,9 @@ bool Adafruit_RV8803::configureEvent(bool rising_edge,
  * @return true on success
  */
 bool Adafruit_RV8803::enableEventCapture(bool enable) {
-  uint8_t evctrl = readEventControl();
-  if (enable) {
-    evctrl |= RV8803_EVCTRL_ECP;
-  } else {
-    evctrl &= ~RV8803_EVCTRL_ECP;
-  }
-  return writeEventControl(evctrl);
+  Adafruit_BusIO_Register evctrl_reg(i2c_dev, RV8803_REG_EVENT_CONTROL, 1);
+  Adafruit_BusIO_RegisterBits ecp(&evctrl_reg, 1, 7); // ECP is bit 7
+  return ecp.write(enable ? 1 : 0);
 }
 
 /**
@@ -435,13 +463,9 @@ bool Adafruit_RV8803::enableEventCapture(bool enable) {
  * @return true on success
  */
 bool Adafruit_RV8803::enableEventReset(bool enable) {
-  uint8_t evctrl = readEventControl();
-  if (enable) {
-    evctrl |= RV8803_EVCTRL_ERST;
-  } else {
-    evctrl &= ~RV8803_EVCTRL_ERST;
-  }
-  return writeEventControl(evctrl);
+  Adafruit_BusIO_Register evctrl_reg(i2c_dev, RV8803_REG_EVENT_CONTROL, 1);
+  Adafruit_BusIO_RegisterBits erst(&evctrl_reg, 1, 0); // ERST is bit 0
+  return erst.write(enable ? 1 : 0);
 }
 
 /**
@@ -449,7 +473,9 @@ bool Adafruit_RV8803::enableEventReset(bool enable) {
  * @return Hundredths value (0-99)
  */
 uint8_t Adafruit_RV8803::getEventHundredths() {
-  return bcd2bin(read_register(RV8803_REG_HUNDREDTHS_CP));
+  Adafruit_BusIO_Register hundredths_cp_reg(i2c_dev, RV8803_REG_HUNDREDTHS_CP,
+                                            1);
+  return bcd2bin(hundredths_cp_reg.read());
 }
 
 /**
@@ -457,7 +483,8 @@ uint8_t Adafruit_RV8803::getEventHundredths() {
  * @return Seconds value (0-59)
  */
 uint8_t Adafruit_RV8803::getEventSeconds() {
-  return bcd2bin(read_register(RV8803_REG_SECONDS_CP) & 0x7F);
+  Adafruit_BusIO_Register seconds_cp_reg(i2c_dev, RV8803_REG_SECONDS_CP, 1);
+  return bcd2bin(seconds_cp_reg.read() & 0x7F);
 }
 
 /**
@@ -465,7 +492,9 @@ uint8_t Adafruit_RV8803::getEventSeconds() {
  * @return true if EVF flag is set
  */
 bool Adafruit_RV8803::eventFired() {
-  return (readFlagRegister() & RV8803_FLAG_EVF) != 0;
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  Adafruit_BusIO_RegisterBits evf(&flag_reg, 1, 2); // EVF is bit 2
+  return evf.read();
 }
 
 /**
@@ -473,9 +502,9 @@ bool Adafruit_RV8803::eventFired() {
  * @return true on success
  */
 bool Adafruit_RV8803::clearEvent() {
-  uint8_t flags = readFlagRegister();
-  flags &= ~RV8803_FLAG_EVF;
-  return writeFlagRegister(flags);
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  Adafruit_BusIO_RegisterBits evf(&flag_reg, 1, 2); // EVF is bit 2
+  return evf.write(0);
 }
 
 /**
@@ -484,9 +513,10 @@ bool Adafruit_RV8803::clearEvent() {
  * @return true on success
  */
 bool Adafruit_RV8803::enableInterrupt(rv8803_interrupt_t source) {
-  uint8_t ctrl = readControlRegister();
+  Adafruit_BusIO_Register ctrl_reg(i2c_dev, RV8803_REG_CONTROL, 1);
+  uint8_t ctrl = ctrl_reg.read();
   ctrl |= source;
-  return writeControlRegister(ctrl);
+  return ctrl_reg.write(ctrl);
 }
 
 /**
@@ -495,9 +525,10 @@ bool Adafruit_RV8803::enableInterrupt(rv8803_interrupt_t source) {
  * @return true on success
  */
 bool Adafruit_RV8803::disableInterrupt(rv8803_interrupt_t source) {
-  uint8_t ctrl = readControlRegister();
+  Adafruit_BusIO_Register ctrl_reg(i2c_dev, RV8803_REG_CONTROL, 1);
+  uint8_t ctrl = ctrl_reg.read();
   ctrl &= ~source;
-  return writeControlRegister(ctrl);
+  return ctrl_reg.write(ctrl);
 }
 
 /**
@@ -507,10 +538,9 @@ bool Adafruit_RV8803::disableInterrupt(rv8803_interrupt_t source) {
  * @note CLKOE pin must be tied HIGH for CLKOUT to work
  */
 bool Adafruit_RV8803::writeSqwPinMode(rv8803_sqw_mode_t mode) {
-  uint8_t ext_reg = readExtensionRegister();
-  ext_reg &= ~RV8803_EXT_FD_MASK;
-  ext_reg |= ((mode << RV8803_EXT_FD_SHIFT) & RV8803_EXT_FD_MASK);
-  return writeExtensionRegister(ext_reg);
+  Adafruit_BusIO_Register ext_reg(i2c_dev, RV8803_REG_EXTENSION, 1);
+  Adafruit_BusIO_RegisterBits fd(&ext_reg, 2, 2); // FD is bits 2-3
+  return fd.write(mode & 0x03);
 }
 
 /**
@@ -518,9 +548,9 @@ bool Adafruit_RV8803::writeSqwPinMode(rv8803_sqw_mode_t mode) {
  * @return Square wave frequency mode
  */
 rv8803_sqw_mode_t Adafruit_RV8803::readSqwPinMode() {
-  uint8_t ext_reg = readExtensionRegister();
-  return (rv8803_sqw_mode_t)((ext_reg & RV8803_EXT_FD_MASK) >>
-                             RV8803_EXT_FD_SHIFT);
+  Adafruit_BusIO_Register ext_reg(i2c_dev, RV8803_REG_EXTENSION, 1);
+  Adafruit_BusIO_RegisterBits fd(&ext_reg, 2, 2); // FD is bits 2-3
+  return (rv8803_sqw_mode_t)fd.read();
 }
 
 /**
@@ -535,10 +565,9 @@ bool Adafruit_RV8803::calibrate(int8_t offset) {
   if (offset < -32)
     offset = -32;
 
-  // Convert to 6-bit representation
-  uint8_t regval = offset & 0x3F;
-  write_register(RV8803_REG_OFFSET, regval);
-  return true;
+  Adafruit_BusIO_Register offset_reg(i2c_dev, RV8803_REG_OFFSET, 1);
+  Adafruit_BusIO_RegisterBits offset_bits(&offset_reg, 6, 0);
+  return offset_bits.write(offset & 0x3F);
 }
 
 /**
@@ -546,7 +575,9 @@ bool Adafruit_RV8803::calibrate(int8_t offset) {
  * @return Signed offset value (-32 to +31)
  */
 int8_t Adafruit_RV8803::getCalibration() {
-  uint8_t regval = read_register(RV8803_REG_OFFSET) & 0x3F;
+  Adafruit_BusIO_Register offset_reg(i2c_dev, RV8803_REG_OFFSET, 1);
+  Adafruit_BusIO_RegisterBits offset_bits(&offset_reg, 6, 0);
+  uint8_t regval = offset_bits.read();
   // Sign-extend from 6 bits
   if (regval & 0x20) {
     return (int8_t)(regval | 0xC0);
@@ -559,7 +590,9 @@ int8_t Adafruit_RV8803::getCalibration() {
  * @return true if V1F flag is set
  */
 bool Adafruit_RV8803::tempCompStopped() {
-  return (readFlagRegister() & RV8803_FLAG_V1F) != 0;
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  Adafruit_BusIO_RegisterBits v1f(&flag_reg, 1, 0); // V1F is bit 0
+  return v1f.read();
 }
 
 /**
@@ -567,9 +600,11 @@ bool Adafruit_RV8803::tempCompStopped() {
  * @return true on success
  */
 bool Adafruit_RV8803::clearPowerFlags() {
-  uint8_t flags = readFlagRegister();
-  flags &= ~(RV8803_FLAG_V1F | RV8803_FLAG_V2F);
-  return writeFlagRegister(flags);
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  Adafruit_BusIO_RegisterBits v1f(&flag_reg, 1, 0); // V1F is bit 0
+  Adafruit_BusIO_RegisterBits v2f(&flag_reg, 1, 1); // V2F is bit 1
+  v1f.write(0);
+  return v2f.write(0);
 }
 
 /**
@@ -578,8 +613,8 @@ bool Adafruit_RV8803::clearPowerFlags() {
  * @return true on success
  */
 bool Adafruit_RV8803::writeRAM(uint8_t value) {
-  write_register(RV8803_REG_RAM, value);
-  return true;
+  Adafruit_BusIO_Register ram_reg(i2c_dev, RV8803_REG_RAM, 1);
+  return ram_reg.write(value);
 }
 
 /**
@@ -587,7 +622,8 @@ bool Adafruit_RV8803::writeRAM(uint8_t value) {
  * @return Stored byte value
  */
 uint8_t Adafruit_RV8803::readRAM() {
-  return read_register(RV8803_REG_RAM);
+  Adafruit_BusIO_Register ram_reg(i2c_dev, RV8803_REG_RAM, 1);
+  return ram_reg.read();
 }
 
 /**
@@ -598,21 +634,20 @@ uint8_t Adafruit_RV8803::readRAM() {
  */
 bool Adafruit_RV8803::writeGP(uint8_t bits) {
   // GP0 is in Hours Alarm [6]
-  uint8_t hours_alarm = read_register(RV8803_REG_HOURS_ALARM);
-  hours_alarm = (hours_alarm & ~0x40) | ((bits & 0x01) << 6);
-  write_register(RV8803_REG_HOURS_ALARM, hours_alarm);
+  Adafruit_BusIO_Register hours_alarm_reg(i2c_dev, RV8803_REG_HOURS_ALARM, 1);
+  Adafruit_BusIO_RegisterBits gp0(&hours_alarm_reg, 1, 6);
+  gp0.write(bits & 0x01);
 
-  // GP1 is in Weekday/Date Alarm [6] (only when WADA=1, but we write anyway)
-  uint8_t wd_alarm = read_register(RV8803_REG_WEEKDAY_DATE_ALARM);
-  wd_alarm = (wd_alarm & ~0x40) | ((bits & 0x02) << 5);
-  write_register(RV8803_REG_WEEKDAY_DATE_ALARM, wd_alarm);
+  // GP1 is in Weekday/Date Alarm [6]
+  Adafruit_BusIO_Register wd_alarm_reg(i2c_dev, RV8803_REG_WEEKDAY_DATE_ALARM,
+                                       1);
+  Adafruit_BusIO_RegisterBits gp1(&wd_alarm_reg, 1, 6);
+  gp1.write((bits >> 1) & 0x01);
 
   // GP2-GP5 are in Timer Counter 1 [7:4]
-  uint8_t tc1 = read_register(RV8803_REG_TIMER_COUNTER1);
-  tc1 = (tc1 & 0x0F) | ((bits & 0x3C) << 2);
-  write_register(RV8803_REG_TIMER_COUNTER1, tc1);
-
-  return true;
+  Adafruit_BusIO_Register tc1_reg(i2c_dev, RV8803_REG_TIMER_COUNTER1, 1);
+  Adafruit_BusIO_RegisterBits gp2_5(&tc1_reg, 4, 4);
+  return gp2_5.write((bits >> 2) & 0x0F);
 }
 
 /**
@@ -623,16 +658,20 @@ uint8_t Adafruit_RV8803::readGP() {
   uint8_t result = 0;
 
   // GP0 is in Hours Alarm [6]
-  uint8_t hours_alarm = read_register(RV8803_REG_HOURS_ALARM);
-  result |= (hours_alarm >> 6) & 0x01;
+  Adafruit_BusIO_Register hours_alarm_reg(i2c_dev, RV8803_REG_HOURS_ALARM, 1);
+  Adafruit_BusIO_RegisterBits gp0(&hours_alarm_reg, 1, 6);
+  result |= gp0.read();
 
   // GP1 is in Weekday/Date Alarm [6]
-  uint8_t wd_alarm = read_register(RV8803_REG_WEEKDAY_DATE_ALARM);
-  result |= (wd_alarm >> 5) & 0x02;
+  Adafruit_BusIO_Register wd_alarm_reg(i2c_dev, RV8803_REG_WEEKDAY_DATE_ALARM,
+                                       1);
+  Adafruit_BusIO_RegisterBits gp1(&wd_alarm_reg, 1, 6);
+  result |= (gp1.read() << 1);
 
   // GP2-GP5 are in Timer Counter 1 [7:4]
-  uint8_t tc1 = read_register(RV8803_REG_TIMER_COUNTER1);
-  result |= (tc1 >> 2) & 0x3C;
+  Adafruit_BusIO_Register tc1_reg(i2c_dev, RV8803_REG_TIMER_COUNTER1, 1);
+  Adafruit_BusIO_RegisterBits gp2_5(&tc1_reg, 4, 4);
+  result |= (gp2_5.read() << 2);
 
   return result;
 }
@@ -642,7 +681,8 @@ uint8_t Adafruit_RV8803::readGP() {
  * @return Register value
  */
 uint8_t Adafruit_RV8803::readExtensionRegister() {
-  return read_register(RV8803_REG_EXTENSION);
+  Adafruit_BusIO_Register ext_reg(i2c_dev, RV8803_REG_EXTENSION, 1);
+  return ext_reg.read();
 }
 
 /**
@@ -652,8 +692,8 @@ uint8_t Adafruit_RV8803::readExtensionRegister() {
  */
 bool Adafruit_RV8803::writeExtensionRegister(uint8_t value) {
   value &= ~RV8803_EXT_TEST; // Ensure TEST bit is always 0
-  write_register(RV8803_REG_EXTENSION, value);
-  return true;
+  Adafruit_BusIO_Register ext_reg(i2c_dev, RV8803_REG_EXTENSION, 1);
+  return ext_reg.write(value);
 }
 
 /**
@@ -661,7 +701,8 @@ bool Adafruit_RV8803::writeExtensionRegister(uint8_t value) {
  * @return Register value
  */
 uint8_t Adafruit_RV8803::readFlagRegister() {
-  return read_register(RV8803_REG_FLAG);
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  return flag_reg.read();
 }
 
 /**
@@ -670,8 +711,8 @@ uint8_t Adafruit_RV8803::readFlagRegister() {
  * @return true on success
  */
 bool Adafruit_RV8803::writeFlagRegister(uint8_t value) {
-  write_register(RV8803_REG_FLAG, value);
-  return true;
+  Adafruit_BusIO_Register flag_reg(i2c_dev, RV8803_REG_FLAG, 1);
+  return flag_reg.write(value);
 }
 
 /**
@@ -679,7 +720,8 @@ bool Adafruit_RV8803::writeFlagRegister(uint8_t value) {
  * @return Register value
  */
 uint8_t Adafruit_RV8803::readControlRegister() {
-  return read_register(RV8803_REG_CONTROL);
+  Adafruit_BusIO_Register ctrl_reg(i2c_dev, RV8803_REG_CONTROL, 1);
+  return ctrl_reg.read();
 }
 
 /**
@@ -688,8 +730,8 @@ uint8_t Adafruit_RV8803::readControlRegister() {
  * @return true on success
  */
 bool Adafruit_RV8803::writeControlRegister(uint8_t value) {
-  write_register(RV8803_REG_CONTROL, value);
-  return true;
+  Adafruit_BusIO_Register ctrl_reg(i2c_dev, RV8803_REG_CONTROL, 1);
+  return ctrl_reg.write(value);
 }
 
 /**
@@ -697,7 +739,8 @@ bool Adafruit_RV8803::writeControlRegister(uint8_t value) {
  * @return Register value
  */
 uint8_t Adafruit_RV8803::readEventControl() {
-  return read_register(RV8803_REG_EVENT_CONTROL);
+  Adafruit_BusIO_Register evctrl_reg(i2c_dev, RV8803_REG_EVENT_CONTROL, 1);
+  return evctrl_reg.read();
 }
 
 /**
@@ -706,8 +749,8 @@ uint8_t Adafruit_RV8803::readEventControl() {
  * @return true on success
  */
 bool Adafruit_RV8803::writeEventControl(uint8_t value) {
-  write_register(RV8803_REG_EVENT_CONTROL, value);
-  return true;
+  Adafruit_BusIO_Register evctrl_reg(i2c_dev, RV8803_REG_EVENT_CONTROL, 1);
+  return evctrl_reg.write(value);
 }
 
 /**
@@ -716,11 +759,10 @@ bool Adafruit_RV8803::writeEventControl(uint8_t value) {
  * @note Resets prescaler and all registers except time/calendar
  */
 bool Adafruit_RV8803::reset() {
-  uint8_t ctrl = readControlRegister();
-  ctrl |= RV8803_CTRL_RESET;
-  writeControlRegister(ctrl);
+  Adafruit_BusIO_Register ctrl_reg(i2c_dev, RV8803_REG_CONTROL, 1);
+  Adafruit_BusIO_RegisterBits reset_bit(&ctrl_reg, 1, 0); // RESET is bit 0
+  return reset_bit.write(1);
   // RESET bit auto-clears
-  return true;
 }
 
 /**
