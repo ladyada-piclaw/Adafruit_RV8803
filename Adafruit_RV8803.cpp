@@ -25,6 +25,7 @@
  */
 
 #include "Adafruit_RV8803.h"
+
 #include <Adafruit_BusIO_Register.h>
 
 /**
@@ -32,7 +33,7 @@
  * @param wire Pointer to TwoWire instance (default &Wire)
  * @return true if device found, false on NACK
  */
-bool Adafruit_RV8803::begin(TwoWire *wire) {
+bool Adafruit_RV8803::begin(TwoWire* wire) {
   if (!i2c_dev) {
     i2c_dev = new Adafruit_I2CDevice(RV8803_I2C_ADDRESS, wire);
   }
@@ -70,7 +71,7 @@ DateTime Adafruit_RV8803::now() {
  * @param dt DateTime object with desired time
  * @note Burst-writes registers 0x00-0x06. Clears V1F and V2F flags.
  */
-void Adafruit_RV8803::adjust(const DateTime &dt) {
+void Adafruit_RV8803::adjust(const DateTime& dt) {
   uint8_t buffer[8];
   buffer[0] = RV8803_REG_SECONDS;
   buffer[1] = bin2bcd(dt.second());
@@ -100,7 +101,9 @@ bool Adafruit_RV8803::lostPower() {
  * @brief Check if RTC oscillator is running (has not lost power)
  * @return true if V2F is NOT set (oscillator OK)
  */
-bool Adafruit_RV8803::isrunning() { return !lostPower(); }
+bool Adafruit_RV8803::isrunning() {
+  return !lostPower();
+}
 
 /**
  * @brief Read hundredths of a second (0-99)
@@ -182,7 +185,7 @@ uint16_t Adafruit_RV8803::getYear() {
  * @return true on success, false on I2C error
  * @note AE bits are inverted: 0=enabled, 1=disabled
  */
-bool Adafruit_RV8803::setAlarm(const DateTime &dt, rv8803_alarm_mode_t mode) {
+bool Adafruit_RV8803::setAlarm(const DateTime& dt, rv8803_alarm_mode_t mode) {
   _alarmMode = mode;
 
   // Determine AE bit values based on mode
@@ -306,7 +309,9 @@ bool Adafruit_RV8803::setAlarmDate(uint8_t date) {
  * @brief Get the current alarm mode
  * @return rv8803_alarm_mode_t enum value
  */
-rv8803_alarm_mode_t Adafruit_RV8803::getAlarmMode() { return _alarmMode; }
+rv8803_alarm_mode_t Adafruit_RV8803::getAlarmMode() {
+  return _alarmMode;
+}
 
 /**
  * @brief Check if alarm has fired
