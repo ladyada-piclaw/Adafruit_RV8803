@@ -25,9 +25,21 @@ void setup() {
   uint8_t passed = 0;
   uint8_t total = 2;
 
-  // Test 1: Set time and read back immediately
-  Serial.println(F("Test 1: Set 2026-03-04 22:30:45 (Tuesday) ..."));
-  DateTime setTime(2026, 3, 4, 22, 30, 45);
+  // Test 1: Set time from compile timestamp and read back
+  DateTime setTime(F(__DATE__), F(__TIME__));
+  Serial.print(F("Test 1: Set compile time "));
+  Serial.print(setTime.year());
+  Serial.print(F("-"));
+  Serial.print(setTime.month());
+  Serial.print(F("-"));
+  Serial.print(setTime.day());
+  Serial.print(F(" "));
+  Serial.print(setTime.hour());
+  Serial.print(F(":"));
+  Serial.print(setTime.minute());
+  Serial.print(F(":"));
+  Serial.print(setTime.second());
+  Serial.println(F(" ..."));
   rtc.adjust(setTime);
   delay(100); // Small delay for registers to settle
 
@@ -45,9 +57,10 @@ void setup() {
   Serial.print(F(":"));
   Serial.println(now.second());
 
-  bool test1Pass = (now.year() == 2026) && (now.month() == 3) &&
-                   (now.day() == 4) && (now.hour() == 22) &&
-                   (now.minute() == 30) && (now.second() >= 45);
+  bool test1Pass =
+      (now.year() == setTime.year()) && (now.month() == setTime.month()) &&
+      (now.day() == setTime.day()) && (now.hour() == setTime.hour()) &&
+      (now.minute() == setTime.minute()) && (now.second() >= setTime.second());
   if (test1Pass) {
     Serial.println(F("  PASS"));
     passed++;
