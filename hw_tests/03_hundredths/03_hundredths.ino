@@ -14,6 +14,11 @@ void setup() {
   while (!Serial)
     delay(10);
 
+  // Power the RV-8803 via GPIO (VCC wired to A3)
+  pinMode(A3, OUTPUT);
+  digitalWrite(A3, HIGH);
+  delay(100); // Let chip stabilize after power-on
+
   Serial.println(F("=== HW Test 03: Hundredths ==="));
   Serial.println();
 

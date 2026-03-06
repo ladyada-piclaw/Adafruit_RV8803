@@ -2,18 +2,48 @@
  * @file 07_sqw_modes.ino
  * @brief Hardware test 07: SQW Pin Modes
  *
- * Tests CLKOUT frequency configuration and verifies read-modify-write
- * logic preserves other Extension register bits.
+ * Tests CLKOUT frequency by bit-bang counting edges on D5.
+ * CLKOE on D2 is active LOW on this breakout.
+ * Also verifies read-modify-write preserves other Extension register bits.
+ *
+ * Wiring: SQWAVE -> D5, CLKOE -> D2
  */
 
 #include <Adafruit_RV8803.h>
 
 Adafruit_RV8803 rtc;
 
+#define SQW_PIN 5
+#define CLKOE_PIN 2
+
+/*!
+ * @brief Count rising edges on SQW_PIN over a given duration
+ * @param ms Duration in milliseconds
+ * @return Number of rising edges counted
+ */
+unsigned long countEdges(unsigned long ms) {
+  unsigned long count = 0;
+  uint8_t last = digitalRead(SQW_PIN);
+  unsigned long start = millis();
+  while (millis() - start < ms) {
+    uint8_t cur = digitalRead(SQW_PIN);
+    if (cur == HIGH && last == LOW) {
+      count++;
+    }
+    last = cur;
+  }
+  return count;
+}
+
 void setup() {
   Serial.begin(115200);
   while (!Serial)
     delay(10);
+
+  // Power the RV-8803 via GPIO (VCC wired to A3)
+  pinMode(A3, OUTPUT);
+  digitalWrite(A3, HIGH);
+  delay(100); // Let chip stabilize after power-on
 
   Serial.println(F("=== HW Test 07: SQW Modes ==="));
   Serial.println();
@@ -24,54 +54,72 @@ void setup() {
   }
 
   uint8_t passed = 0;
-  uint8_t total = 6;
+  uint8_t total = 8;
 
-  // Test 1-3: Basic mode round-trip
-  struct {
-    rv8803_sqw_mode_t mode;
-    const char* name;
-  } modes[] = {{RV8803_SquareWave32kHz, "32kHz"},
-               {RV8803_SquareWave1kHz, "1kHz"},
-               {RV8803_SquareWave1Hz, "1Hz"}};
+  pinMode(SQW_PIN, INPUT);
+  pinMode(CLKOE_PIN, OUTPUT);
+  digitalWrite(CLKOE_PIN, HIGH); // Active HIGH — enable CLKOUT
 
-  for (int i = 0; i < 3; i++) {
-    Serial.print(F("Test "));
-    Serial.print(i + 1);
-    Serial.print(F(": "));
-    Serial.print(modes[i].name);
-    Serial.print(F(" round-trip ... "));
+  // Test 1: 1Hz — count edges over 3 seconds, expect ~3
+  Serial.print(F("Test 1: 1Hz output on D5 ... "));
+  rtc.writeSqwPinMode(RV8803_SquareWave1Hz);
+  delay(10);
+  unsigned long edges1 = countEdges(3000);
+  Serial.print(F("edges in 3s = "));
+  Serial.print(edges1);
+  if (edges1 >= 2 && edges1 <= 4) {
+    Serial.println(F(" PASS"));
+    passed++;
+  } else {
+    Serial.println(F(" FAIL"));
+  }
 
-    rtc.writeSqwPinMode(modes[i].mode);
-    rv8803_sqw_mode_t readBack = rtc.readSqwPinMode();
+  // Test 2: 1kHz — count edges over 200ms, expect ~200
+  Serial.print(F("Test 2: 1kHz output on D5 ... "));
+  rtc.writeSqwPinMode(RV8803_SquareWave1kHz);
+  delay(10);
+  unsigned long edges2 = countEdges(200);
+  Serial.print(F("edges in 200ms = "));
+  Serial.print(edges2);
+  // Allow 150-250
+  if (edges2 >= 150 && edges2 <= 250) {
+    Serial.println(F(" PASS"));
+    passed++;
+  } else {
+    Serial.println(F(" FAIL"));
+  }
 
-    if (readBack == modes[i].mode) {
-      Serial.println(F("PASS"));
-      passed++;
-    } else {
-      Serial.print(F("FAIL (got "));
-      Serial.print(readBack);
-      Serial.println(F(")"));
-    }
+  // Test 3: 32.768kHz — count edges over 100ms, expect ~3277
+  // Note: digitalRead on AVR may not keep up at 32kHz, so we just
+  // verify we see significantly more edges than 1kHz
+  Serial.print(F("Test 3: 32kHz output on D5 ... "));
+  rtc.writeSqwPinMode(RV8803_SquareWave32kHz);
+  delay(10);
+  unsigned long edges3 = countEdges(100);
+  Serial.print(F("edges in 100ms = "));
+  Serial.print(edges3);
+  // digitalRead tops out ~150kHz on AVR, so we should see most of them
+  // Expect at least 2000 edges
+  if (edges3 >= 2000) {
+    Serial.println(F(" PASS"));
+    passed++;
+  } else {
+    Serial.println(F(" FAIL"));
   }
 
   // Test 4: Read-modify-write preserves TE bit
   Serial.println(F("Test 4: SQW change preserves TE bit ..."));
-
-  // First, set up extension register with TE=1 (timer enable)
   uint8_t extReg = rtc.readExtensionRegister();
-  extReg |= 0x10; // Set TE bit
+  extReg |= 0x10;
   rtc.writeExtensionRegister(extReg);
 
-  // Verify TE is set
   uint8_t before = rtc.readExtensionRegister();
   bool teBefore = (before & 0x10) != 0;
   Serial.print(F("  TE before: "));
   Serial.println(teBefore ? F("1") : F("0"));
 
-  // Change SQW mode
   rtc.writeSqwPinMode(RV8803_SquareWave1Hz);
 
-  // Verify TE is still set
   uint8_t after = rtc.readExtensionRegister();
   bool teAfter = (after & 0x10) != 0;
   Serial.print(F("  TE after SQW change: "));
@@ -84,17 +132,14 @@ void setup() {
     Serial.println(F("  FAIL - TE was clobbered"));
   }
 
-  // Clean up - disable TE
   extReg = rtc.readExtensionRegister();
   extReg &= ~0x10;
   rtc.writeExtensionRegister(extReg);
 
   // Test 5: Read-modify-write preserves WADA and USEL bits
   Serial.println(F("Test 5: SQW change preserves WADA/USEL bits ..."));
-
-  // Set WADA=1 (0x40) and USEL=1 (0x20)
   extReg = rtc.readExtensionRegister();
-  extReg |= 0x60; // Set WADA and USEL
+  extReg |= 0x60;
   rtc.writeExtensionRegister(extReg);
 
   before = rtc.readExtensionRegister();
@@ -102,7 +147,6 @@ void setup() {
   Serial.print(F("  WADA|USEL before: 0x"));
   Serial.println(wadaUselBefore, HEX);
 
-  // Change SQW mode
   rtc.writeSqwPinMode(RV8803_SquareWave32kHz);
 
   after = rtc.readExtensionRegister();
@@ -119,10 +163,8 @@ void setup() {
 
   // Test 6: Verify TD bits not affected by FD changes
   Serial.println(F("Test 6: SQW change preserves TD bits ..."));
-
-  // Set TD to 0x02 (1Hz timer clock)
   extReg = rtc.readExtensionRegister();
-  extReg = (extReg & 0xFC) | 0x02; // Set TD bits to 0x02
+  extReg = (extReg & 0xFC) | 0x02;
   rtc.writeExtensionRegister(extReg);
 
   before = rtc.readExtensionRegister();
@@ -130,7 +172,6 @@ void setup() {
   Serial.print(F("  TD before: 0x"));
   Serial.println(tdBefore, HEX);
 
-  // Change SQW mode through all values
   rtc.writeSqwPinMode(RV8803_SquareWave1Hz);
   rtc.writeSqwPinMode(RV8803_SquareWave1kHz);
   rtc.writeSqwPinMode(RV8803_SquareWave32kHz);
@@ -147,8 +188,40 @@ void setup() {
     Serial.println(F("  FAIL - TD clobbered"));
   }
 
-  // Clean up - reset extension register to default
   rtc.writeExtensionRegister(0x00);
+
+  // Test 7: CLKOE LOW disables CLKOUT (active HIGH)
+  Serial.print(F("Test 7: CLKOE LOW disables CLKOUT ... "));
+  rtc.writeSqwPinMode(RV8803_SquareWave1kHz);
+  delay(10);
+  digitalWrite(CLKOE_PIN, LOW); // Disable CLKOUT
+  delay(10);
+  unsigned long edgesOff = countEdges(200);
+  Serial.print(F("edges in 200ms = "));
+  Serial.print(edgesOff);
+  if (edgesOff == 0) {
+    Serial.println(F(" PASS (no pulses)"));
+    passed++;
+  } else {
+    Serial.println(F(" FAIL (still pulsing)"));
+  }
+
+  // Test 8: CLKOE HIGH re-enables CLKOUT
+  Serial.print(F("Test 8: CLKOE HIGH re-enables CLKOUT ... "));
+  digitalWrite(CLKOE_PIN, HIGH); // Re-enable CLKOUT
+  delay(10);
+  unsigned long edgesOn = countEdges(200);
+  Serial.print(F("edges in 200ms = "));
+  Serial.print(edgesOn);
+  if (edgesOn >= 150 && edgesOn <= 250) {
+    Serial.println(F(" PASS (1kHz restored)"));
+    passed++;
+  } else {
+    Serial.println(F(" FAIL"));
+  }
+
+  // Clean up
+  rtc.writeSqwPinMode(RV8803_SquareWave32kHz);
 
   Serial.println();
   Serial.print(passed);
